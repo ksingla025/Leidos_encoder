@@ -29,7 +29,7 @@ from tensorflow.contrib import rnn
 
 from lib.util import _attn_mul_fun
 
-def BiRNN(lstm_bw_cell, x, sequence_length,idd='sent'):
+def BiRNN(lstm_bw_cell, x, sequence_length=None,idd='sent'):
 
 	'''
 	Input Variables
@@ -40,8 +40,12 @@ def BiRNN(lstm_bw_cell, x, sequence_length,idd='sent'):
 	'''
 
 	# Get lstm cell output
-	with tf.variable_scope(idd+'lstm1', reuse=True):
-		outputs, states = tf.nn.dynamic_rnn(lstm_bw_cell, x, dtype=tf.float32, sequence_length=sequence_length)
+	if sequence_length == None:
+		with tf.variable_scope(idd+'lstm1', reuse=True):
+			outputs, states = tf.nn.dynamic_rnn(lstm_bw_cell, x, dtype=tf.float32, sequence_length=sequence_length)
+	else:
+		with tf.variable_scope(idd+'lstm1', reuse=True):
+			outputs, states = tf.nn.dynamic_rnn(lstm_bw_cell, x, dtype=tf.float32, sequence_length=sequence_length)
 
 	return outputs
 
@@ -123,15 +127,17 @@ class DocAggregator(object):
 
 	def _calculate_sentence_encodings(self, doc_embed,seq_len):
 
-		docunstack = tf.unstack(doc_embed)
+
+		doc_context = tf.map_fn(self.sent_aggregator.calculate_attention_with_lstm, doc_embed)
+
+		##### old method ######
+#		docunstack = tf.unstack(doc_embed)
 
 		# document lengths of each sentence in each batch for doc
-		seq_len_unstack = tf.unstack(seq_len)
+#		seq_len_unstack = tf.unstack(seq_len)
 
-		# initialize aggregator		
-		
-		doc_context = []
-
+		# initialize aggregator	
+		'''
 		for i in range(0,len(docunstack)):
 
 			sequence_length = tf.reshape(seq_len_unstack[i],[-1])
@@ -140,9 +146,12 @@ class DocAggregator(object):
 			context = tf.nn.dropout(context, self.keep_prob)
 
 			doc_context.append(context)
+		'''
+
+		######################
 
 		#stack all (doc_batch_size) doc1 context vectors
-		doc_context = tf.stack(doc_context)
+#		doc_context = tf.stack(doc_context)
 
 		return doc_context
 
@@ -337,7 +346,7 @@ class Aggregator(object):
 		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
 		return context_vector
 
-	def calculate_attention_with_lstm(self, embed, sequence_length):
+	def calculate_attention_with_lstm(self, embed, sequence_length=None):
 
 		'''
 		this method only works if you use

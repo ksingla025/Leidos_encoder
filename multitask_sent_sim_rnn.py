@@ -54,7 +54,8 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 
 	def __init__(self,embedding_size=100, sent_aggregator=None, task_batch_size=5, valid_size=10,
 		learning_rate=0.01, sent_attention_size=100, doc_attention_size=100, sent_embedding_size=100,
-		doc_embedding_size=100, lstm_layer=1, keep_prob=0.7, num_classes=50, multiatt=True, model_name='test'):
+		doc_embedding_size=100, lstm_layer=1, keep_prob=0.7, num_classes=50, task_learning_rate=.01,
+		multiatt=True, model_name='test'):
 
 		#set parameters
 		self.embedding_size = embedding_size
@@ -69,7 +70,7 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 		self.keep_prob = keep_prob
 		self.num_classes = num_classes
 		self.multiatt = multiatt
-
+		self.task_learning_rate = task_learning_rate
 		self.leidos_data_index = 0
 		self.leidos_data = generate_train_batch_data_task_leidos(max_sent_len=50, max_doc_size=100)
 		self.model_path = MODEL_PATH+model_name
@@ -132,10 +133,10 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 			doc_len contains original number of sentences in a document
 			labels batch contains labels vectors, where classes present are 1
 			'''
-			self.doc_batch = tf.placeholder(tf.int32, [self.task_batch_size,None,None], name='document_batch')
-			self.sentlen_batch = tf.placeholder(tf.int32, [self.task_batch_size,None], name='sentlen_batch')
-			self.doclen_batch = tf.placeholder(tf.int32, [self.task_batch_size], name='doclen_batch')
-			self.labels_batch = tf.placeholder(tf.float32, [self.task_batch_size,self.num_classes], name='labels_batch')
+			self.doc_batch = tf.placeholder(tf.int32, [None,None,None], name='document_batch')
+			self.sentlen_batch = tf.placeholder(tf.int32, [None,None], name='sentlen_batch')
+			self.doclen_batch = tf.placeholder(tf.int32, [None], name='doclen_batch')
+			self.labels_batch = tf.placeholder(tf.float32, [None,self.num_classes], name='labels_batch')
 
 			# step to mamnage decay
 			self.global_step = tf.Variable(0, trainable=False)
@@ -153,14 +154,16 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 				self.doc_embed = tf.nn.embedding_lookup(self.embeddings, self.doc_batch)
 	
 				#we unstack and pick only one document to initiate the sentence encoder
-				self.doc_embed_0 = tf.unstack(self.doc_embed)[0]
+				self.doc_embed_0 = self.doc_embed[0]
+#				self.doc_embed_0 = tf.unstack(self.doc_embed)[0]
 				
 				'''
 				we unstack sentlen to get sentence lengths of a single document
 				this is because sentence aggregator/aggregator class can only
 				take list of sequences and not list of list of sequences
 				'''
-				self.sentlen_0 = tf.unstack(self.sentlen_batch)[0]
+				self.sentlen_0 = self.sentlen_batch[0]
+#				self.sentlen_0 = tf.unstack(self.sentlen_batch)[0]
 
 				'''
 				we initiate the aggregator for encoding sentences
@@ -192,8 +195,9 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 			self.document_vector = self.document_aggregator.calculate_document_vector(self.doc_embed, self.sentlen_batch, self.doclen_batch)
 			
 			#document_vector from [num_class,batch_size,doc_embedding_size] => [batch_size,num_class,doc_embedding_size]
-			self.document_vector = tf.transpose(self.document_vector, [1, 0, 2])
-			self.document_vector = tf.unstack(self.document_vector, axis=1)
+
+			self.document_vector = tf.unstack(self.document_vector, axis=0)
+			print(self.document_vector)
 
 
 			#### prediction layer
