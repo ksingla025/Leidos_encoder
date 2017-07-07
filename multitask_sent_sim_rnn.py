@@ -43,9 +43,9 @@ from lib.util import *
 from lib.attention_based_aggregator import *
 from lib.batch_data_generators import generate_train_batch_data_task_leidos
 ############### Utility Functions ####################
-def get_class_logits(tf_train_dataset,embedding_size=100):
-    weights = tf.Variable(tf.truncated_normal([embedding_size, 1]))
-    biases = tf.Variable(tf.zeros([1]))
+def get_class_logits(tf_train_dataset, embedding_size=100, name="test"):
+    weights = tf.Variable(tf.truncated_normal([embedding_size, 1]), name=name+"_weights")
+    biases = tf.Variable(tf.zeros([1]), name=name+"_bias")
     logits = tf.matmul(tf_train_dataset, weights) + biases
     return weights, biases, logits
 
@@ -126,35 +126,56 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 		'''
 
 		with self.graph.as_default(), tf.device('/cpu:0'):
-
+			'''
+			doc_batch is [batch_size,max_doc_size,max_sent_len]
+			sentlen_batch contains original length of each sentence in a document
+			doc_len contains original number of sentences in a document
+			labels batch contains labels vectors, where classes present are 1
+			'''
 			self.doc_batch = tf.placeholder(tf.int32, [self.task_batch_size,None,None], name='document_batch')
 			self.sentlen_batch = tf.placeholder(tf.int32, [self.task_batch_size,None], name='sentlen_batch')
 			self.doclen_batch = tf.placeholder(tf.int32, [self.task_batch_size], name='doclen_batch')
 			self.labels_batch = tf.placeholder(tf.float32, [self.task_batch_size,self.num_classes], name='labels_batch')
 
+			# step to mamnage decay
+			self.global_step = tf.Variable(0, trainable=False)
+
+			#parameter to control droupput, keep_prob-0.7, means it keeps 0.7 of the data
 			self.keep_prob = tf.placeholder("float")
 
+			#initiate the embeddings for each word in the vocabulary
 			self.embeddings = tf.Variable(tf.random_uniform([self.vocabulary_size,
-				self.embedding_size], -1.0, 1.0), name='embeddings')
+				self.embedding_size], -1.0, 1.0), name='word_embeddings')
 
 			with tf.name_scope('Doc_AttentionBasedAggregator'):
 
+				#do a embedding lookup for each word in the document
 				self.doc_embed = tf.nn.embedding_lookup(self.embeddings, self.doc_batch)
 	
-#				self.doc_embed_0 = TensorArr.unstack(self.doc_embed).read(0)
-#				self.sentlen_0 = TensorArr.unstack(self.sentlen_batch).read(0)
+				#we unstack and pick only one document to initiate the sentence encoder
 				self.doc_embed_0 = tf.unstack(self.doc_embed)[0]
-			
+				
+				'''
+				we unstack sentlen to get sentence lengths of a single document
+				this is because sentence aggregator/aggregator class can only
+				take list of sequences and not list of list of sequences
+				'''
 				self.sentlen_0 = tf.unstack(self.sentlen_batch)[0]
 
-				print(self.doc_embed_0.get_shape())
-				print(self.sentlen_0.get_shape())
-		
+				'''
+				we initiate the aggregator for encoding sentences
+				use lstm_layer=1 for if using lstm layer else 0
+				'''
 				self.sent_aggregator = Aggregator(sequence_length=self.sentlen_0,embedding_size=self.embedding_size,
 					attention_size=self.sent_attention_size, embed = self.doc_embed_0,
 					n_hidden=self.sent_embedding_size, lstm_layer=1, keep_prob=0.7,idd='sent')
 				self.sent_aggregator.init_attention_aggregator()
 
+				'''
+				we initiate the aggregator for encoding documents with
+				the doc_batch. here also keep lstm_layer, if using lstm
+				layer at the document level
+				'''
 				self.document_aggregator = DocAggregator(embedding_size=self.embedding_size,
 					sent_embedding_size=self.sent_embedding_size, sent_attention_size=self.sent_attention_size,
 					doc_attention_size=self.doc_attention_size, doc_embedding_size=self.doc_embedding_size,
@@ -163,8 +184,14 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 					sent_len=self.sentlen_batch, doc_len=self.doclen_batch,
 					num_class=self.num_classes, multiatt=self.multiatt)
 
+			'''
+			this is the used after the document encoder has been initialized
+			and being used for training
+			'''
 			self.doc_embed = tf.nn.embedding_lookup(self.embeddings, self.doc_batch)
 			self.document_vector = self.document_aggregator.calculate_document_vector(self.doc_embed, self.sentlen_batch, self.doclen_batch)
+			
+			#document_vector from [num_class,batch_size,doc_embedding_size] => [batch_size,num_class,doc_embedding_size]
 			self.document_vector = tf.transpose(self.document_vector, [1, 0, 2])
 			self.document_vector = tf.unstack(self.document_vector, axis=1)
 
@@ -174,24 +201,30 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 			pred_bias = []
 			logits = []
 			for i in range(0,len(self.document_vector)):
-				 w_0, b_0, logits_0 = get_class_logits(self.document_vector[i],self.doc_embedding_size)
-				 print(logits_0.get_shape())
+				 w_0, b_0, logits_0 = get_class_logits(self.document_vector[i],
+				 	self.doc_embedding_size, name="pred"+str(i))
 				 pred_weights.append(w_0)
 				 pred_bias.append(b_0)
 				 logits.append(logits_0)
 
 			all_logits = tf.concat(logits,1)
 
-			self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=all_logits, labels=self.labels_batch))
+			with tf.name_scope('DocClassifier-Loss'):
+				self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=all_logits, labels=self.labels_batch))
+
+			with tf.name_scope('DocClassifier-SGD'):
+				self.learning_rate = tf.train.exponential_decay(self.task_learning_rate, self.global_step,
+					50000, 0.98, staircase=True)
+				
+				# OPTIMIZATION ALGORITHM i.e. GRADIENT DESCENT
+				self.training_OP = tf.train.GradientDescentOptimizer(self.learning_rate).minimize(self.loss,
+					global_step=self.global_step)
 
 			# Add variable initializer.
 			self.init_op = tf.global_variables_initializer()
 
 			# create a saver
 			self.saver = tf.train.Saver()
-
-			# OPTIMIZATION ALGORITHM i.e. GRADIENT DESCENT
-			self.training_OP = tf.train.GradientDescentOptimizer(.01).minimize(self.loss)
 
 
 	def training(self,num_steps=10000):
