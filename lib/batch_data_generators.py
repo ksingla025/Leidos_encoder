@@ -329,12 +329,12 @@ def generate_train_batch_data_task_leidos(max_sent_len=50,max_doc_size=100):
 	'''
 	leidos_corpus = cPickle.load(open(DATA_ID+"leidos_train.p", 'rb'))
 
-	epoch = {}
+	epoch = []
 
 	for key in leidos_corpus.keys():
 		sample = []
 		labels = leidos_corpus[key]['theme']		
-		doc = leidos_corpus[key]['tokens_title'] + leidos_corpus['tokens_text']
+		doc = leidos_corpus[key]['tokens_title'] + leidos_corpus[key]['tokens_text']
 		doc_len = len(doc)
 		'''
 		1. if the doc_len is more than max_doc_size, then we only take
@@ -351,6 +351,7 @@ def generate_train_batch_data_task_leidos(max_sent_len=50,max_doc_size=100):
 			sent_length.append(len(line))
 		doc,sent_length = document_pad(doc, 0, max_sent_len=max_sent_len, doc_length=max_doc_size, sent_length=sent_length)
 		sample.append(doc)
+		sample.append(doc_len)
 		sample.append(sent_length)
 		sample.append(labels)
 		epoch.append(sample)
@@ -386,6 +387,7 @@ def generate_test_batch_data_task_leidos(max_sent_len=50,max_doc_size=100):
 			doc,sent_length = document_pad(doc, 0, max_sent_len=max_sent_len, doc_length=max_doc_size, sent_length=sent_length)
 			
 			sample.append(doc)
+			sample.append(doc_len)
 			sample.append(sent_length)
 			sample.append(labels)
 			epoch[lang].append(sample)

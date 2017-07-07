@@ -41,21 +41,26 @@ from sklearn.base import BaseEstimator, TransformerMixin
 from lib.path import *
 from lib.util import *
 from lib.attention_based_aggregator import *
-
+from lib.batch_data_generators import generate_train_batch_data_task_leidos
 ############### Utility Functions ####################
+def get_class_logits(tf_train_dataset,embedding_size=100):
+    weights = tf.Variable(tf.truncated_normal([embedding_size, 1]))
+    biases = tf.Variable(tf.zeros([1]))
+    logits = tf.matmul(tf_train_dataset, weights) + biases
+    return weights, biases, logits
+
+
 class DocClassifier(BaseEstimator, TransformerMixin):
 
-	def __init__(self,embedding_size=200, task_batch_size=5, valid_size=10,
-		learning_rate=0.01, num_steps=5000000, sent_attention_size=150,
-		doc_attention_size=150, sent_embedding_size=150, doc_embedding_size=150,
-		lstm_layer=1,keep_prob=0.7,num_classes=50):
+	def __init__(self,embedding_size=100, sent_aggregator=None, task_batch_size=5, valid_size=10,
+		learning_rate=0.01, sent_attention_size=100, doc_attention_size=100, sent_embedding_size=100,
+		doc_embedding_size=100, lstm_layer=1, keep_prob=0.7, num_classes=50, multiatt=True, model_name='test'):
 
 		#set parameters
 		self.embedding_size = embedding_size
 		self.task_batch_size = task_batch_size
 		self.valid_size = valid_size
 		self.learning_rate = .01
-		self.num_steps = num_steps
 		self.sent_attention_size = sent_attention_size
 		self.doc_attention_size = doc_attention_size
 		self.sent_embedding_size = sent_embedding_size
@@ -63,8 +68,52 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 		self.lstm_layer = lstm_layer
 		self.keep_prob = keep_prob
 		self.num_classes = num_classes
+		self.multiatt = multiatt
 
-		self.doc_classifier_graph()
+		self.leidos_data_index = 0
+		self.leidos_data = generate_train_batch_data_task_leidos(max_sent_len=50, max_doc_size=100)
+		self.model_path = MODEL_PATH+model_name
+
+		self._build_dictionaries()
+
+		self.graph = tf.Graph()
+
+	def _build_dictionaries(self):
+
+		print("Loading Data Files")
+
+		self.dictionary = cPickle.load(open(DATA_ID+"dictionary.p", 'rb'))
+		self.reverse_dictionary = cPickle.load(open(DATA_ID+"reverse_dictionary.p", 'rb'))
+		
+		print("dictionaries loaded")
+
+		self.vocabulary_size = len(self.dictionary.keys())
+
+	def _generate_batch_leidos_classfication(self):
+
+		doc_batch = []
+		doclen_batch = []
+		sentlen_batch = []
+		labels_batch = []
+
+		for i in range(0,self.task_batch_size):
+
+			doc, doclen, sentlen, labels = self.leidos_data[self.leidos_data_index]
+
+			assert len(sentlen) == 100
+
+			doc_batch.append(doc)
+			doclen_batch.append(doclen)
+			sentlen_batch.append(sentlen)
+			labels_batch.append(labels)
+
+			self.leidos_data_index = (self.leidos_data_index + 1) % len(self.leidos_data)
+
+			if self.leidos_data_index == 0:
+
+				self.docsim_data = random.shuffle(self.docsim_data)
+
+		return np.array(doc_batch), np.array(doclen_batch), np.array(sentlen_batch), np.array(labels_batch)
 
 	def doc_classifier_graph(self):
 		'''
@@ -75,15 +124,120 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 		3. LSTM (with attention) based encoding of documents from sentences
 		4. Classifier
 		'''
-		self.doc_batch = tf.placeholder(tf.int32, [None,None,None], name='document_batch')
-		self.sentlen_batch = tf.placeholder(tf.int32, [None,None], name='sentlen_batch')
-		self.labels_batch = tf.placeholder(tf.int32, [None,self.num_classes], name='labels_batch')
 
-		with tf.name_scope('Doc_AttentionBasedAggregator'):
+		with self.graph.as_default(), tf.device('/cpu:0'):
 
-			document_aggregator = DocAggregator(embedding_size=self.embedding_size, sent_embedding_size=self.sent_embedding_size,\
-				sent_attention_size=self.sent_attention_size, doc_attention_size=self.doc_attention_size,\
-				doc_embedding_size=self.doc_embedding_size, sent_aggregator=None, lstm_layer=1, idd='doc')
+			self.doc_batch = tf.placeholder(tf.int32, [self.task_batch_size,None,None], name='document_batch')
+			self.sentlen_batch = tf.placeholder(tf.int32, [self.task_batch_size,None], name='sentlen_batch')
+			self.doclen_batch = tf.placeholder(tf.int32, [self.task_batch_size], name='doclen_batch')
+			self.labels_batch = tf.placeholder(tf.float32, [self.task_batch_size,self.num_classes], name='labels_batch')
+
+			self.keep_prob = tf.placeholder("float")
+
+			self.embeddings = tf.Variable(tf.random_uniform([self.vocabulary_size,
+				self.embedding_size], -1.0, 1.0), name='embeddings')
+
+			with tf.name_scope('Doc_AttentionBasedAggregator'):
+
+				self.doc_embed = tf.nn.embedding_lookup(self.embeddings, self.doc_batch)
+	
+#				self.doc_embed_0 = TensorArr.unstack(self.doc_embed).read(0)
+#				self.sentlen_0 = TensorArr.unstack(self.sentlen_batch).read(0)
+				self.doc_embed_0 = tf.unstack(self.doc_embed)[0]
+			
+				self.sentlen_0 = tf.unstack(self.sentlen_batch)[0]
+
+				print(self.doc_embed_0.get_shape())
+				print(self.sentlen_0.get_shape())
+		
+				self.sent_aggregator = Aggregator(sequence_length=self.sentlen_0,embedding_size=self.embedding_size,
+					attention_size=self.sent_attention_size, embed = self.doc_embed_0,
+					n_hidden=self.sent_embedding_size, lstm_layer=1, keep_prob=0.7,idd='sent')
+				self.sent_aggregator.init_attention_aggregator()
+
+				self.document_aggregator = DocAggregator(embedding_size=self.embedding_size,
+					sent_embedding_size=self.sent_embedding_size, sent_attention_size=self.sent_attention_size,
+					doc_attention_size=self.doc_attention_size, doc_embedding_size=self.doc_embedding_size,
+					sent_aggregator=self.sent_aggregator, lstm_layer=1, keep_prob=self.keep_prob, idd='doc')
+				self.document_aggregator.initiate_doc_attention_aggregator(doc_embed=self.doc_embed,
+					sent_len=self.sentlen_batch, doc_len=self.doclen_batch,
+					num_class=self.num_classes, multiatt=self.multiatt)
+
+			self.doc_embed = tf.nn.embedding_lookup(self.embeddings, self.doc_batch)
+			self.document_vector = self.document_aggregator.calculate_document_vector(self.doc_embed, self.sentlen_batch, self.doclen_batch)
+			self.document_vector = tf.transpose(self.document_vector, [1, 0, 2])
+			self.document_vector = tf.unstack(self.document_vector, axis=1)
+
+
+			#### prediction layer
+			pred_weights = []
+			pred_bias = []
+			logits = []
+			for i in range(0,len(self.document_vector)):
+				 w_0, b_0, logits_0 = get_class_logits(self.document_vector[i],self.doc_embedding_size)
+				 print(logits_0.get_shape())
+				 pred_weights.append(w_0)
+				 pred_bias.append(b_0)
+				 logits.append(logits_0)
+
+			all_logits = tf.concat(logits,1)
+
+			self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=all_logits, labels=self.labels_batch))
+
+			# Add variable initializer.
+			self.init_op = tf.global_variables_initializer()
+
+			# create a saver
+			self.saver = tf.train.Saver()
+
+			# OPTIMIZATION ALGORITHM i.e. GRADIENT DESCENT
+			self.training_OP = tf.train.GradientDescentOptimizer(.01).minimize(self.loss)
+
+
+	def training(self,num_steps=10000):
+
+		self.doc_classifier_graph()
+
+
+		self.sess = tf.Session(graph=self.graph)
+
+		# with self.sess as session:
+		session = self.sess
+
+		session.run(self.init_op)
+
+		for step in range(num_steps):
+
+			doc_batch, doclen_batch, sentlen_batch, labels_batch = self._generate_batch_leidos_classfication()
+
+			'''
+			print(doc_batch.shape)
+			print(doclen_batch.shape)
+			print(sentlen_batch.shape)
+			print(labels_batch.shape)
+			'''
+
+			self.step, self.new_cost = session.run([self.training_OP, self.loss],
+				feed_dict={self.doc_batch: doc_batch, self.sentlen_batch: sentlen_batch,
+				self.doclen_batch: doclen_batch, self.labels_batch: labels_batch,
+				self.keep_prob : 0.7 })
+
+			self.saver.save(session,self.model_path)
+
+			print(self.new_cost)
+	#		print(document_vector)
+	#		print("document vector shape : ",np.array(document_vector).shape)
+
+	#		new_saver = tf.train.import_meta_graph(model_meta_file)
+	#		new_saver.restore(sess, tf.train.latest_checkpoint('./'))
+
+'''
+class TestDocClassifier(object):
+
+	def __init__(self, model):
+'''
+
+
 
 
 
@@ -190,11 +344,8 @@ class MultiTask(BaseEstimator, TransformerMixin):
 			with tf.name_scope('AttentionBasedAggregator'):
 				self.attention_aggregator = Aggregator(sequence_length=self.train_sentsimx_len,embedding_size=self.embedding_size,
 					attention_size=self.attention_size, embed = self.embedx, n_hidden=100, lstm_layer=1, keep_prob=0.7,idd='sent')
-
-				if self.lstm_layer == 1:
-					self.attention_aggregator.init_attention_aggregator_lstm()
-				else:
-					self.attention_aggregator.init_attention_aggregator()					
+	
+				self.attention_aggregator.init_attention_aggregator()					
 
 			# if using lstm layer
 			if self.lstm_layer == 1:
@@ -441,18 +592,19 @@ class MultiTask(BaseEstimator, TransformerMixin):
 				
 				
 				# run the sentence similarity task
+				'''
 				embedx,embedy = session.run([self.embedx, self.embedy],
 					feed_dict={self.train_sentsimx: train_sentsimx_batch, self.train_sentsimy: train_sentsimy_batch,
 					self.train_sentsim_labels: train_sentsim_labels_batch, self.keep_prob : 0.7 })
 
-#				print embedx.shape
-#				print embedy.shape
+				print embedx.shape
+				print embedy.shape
 
 				contextx,contexty = session.run([self.contextx, self.contexty],
 					feed_dict={self.train_sentsimx: train_sentsimx_batch, self.train_sentsimy: train_sentsimy_batch,
 					self.train_sentsimx_len: train_sentsimx_len_batch, self.train_sentsimy_len: train_sentsimy_len_batch,
 					self.train_sentsim_labels: train_sentsim_labels_batch, self.keep_prob : 0.7 })
-
+				'''
 #				print contextx.shape
 #				print contexty.shape
 				_, sentsim_loss, summary_sentsim = session.run([self.task_optimizer, self.cost_mean,self.merged_summary_task_mlp],

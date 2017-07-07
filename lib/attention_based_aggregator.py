@@ -61,7 +61,7 @@ class DocAggregator(object):
 
 		self.keep_prob = keep_prob
 
-	def initiate_doc_attention_aggregator(self, doc_emded, seq_len, doc_len):
+	def initiate_doc_attention_aggregator(self, doc_embed, sent_len, doc_len, num_class=50, multiatt=True):
 
 		'''
 		doc = tf.placeholder(tf.int32, [None,max_doc_size,max_sent_len], name='doc')
@@ -83,28 +83,27 @@ class DocAggregator(object):
 			embed = tf.unstack(doc_embed)[0]
 
 			#get sentence length of 1 document from the batch
-			seq_len_unstack = tf.unstack(seq_len)[0]
+			sent_len_unstack = tf.unstack(sent_len)[0]
 
-			_inititate_sentence_aggregator(emded,seq_len)
+			_inititate_sentence_aggregator(emded,sent_len)
 
-		doc_context = _calculate_sentence_encodings(doc_embed,seq_len)
+		doc_context = self._calculate_sentence_encodings(doc_embed,sent_len)
 
-		_inititate_doc_aggregator(emded=doc_context, doc_len=doc_len,lstm_layer=1, keep_prob=self.keep_prob)
+		self._inititate_doc_aggregator(embed=doc_context, doc_len=doc_len,lstm_layer=1,
+			doc_attention_size=self.doc_attention_size, num_class=num_class,
+			keep_prob=self.keep_prob,multiatt=multiatt)
 
 	
-	def _initiate_sentence_aggregator(embed,seq_len):
+	def _initiate_sentence_aggregator(self, embed, seq_len):
 
 		with tf.name_scope('AttentionBasedAggregator'):
-			self.sent_aggregator = Aggregator(sequence_length=seq_len,embedding_size=self.embedding_size,
+			self.sent_aggregator = Aggregator(sequence_length=seq_len, embedding_size=self.embedding_size,
 				attention_size=self.sent_attention_size, embed = embed, n_hidden=self.sent_embedding_size,\
 				lstm_layer=1, keep_prob=0.7,idd='sent')
 
-			if self.lstm_layer == 1:
-				self.sent_aggregator.init_attention_aggregator_lstm()
-			else:
-				self.sent_aggregator.init_attention_aggregator()
+			self.sent_aggregator.init_attention_aggregator()
 
-	def _inititate_doc_aggregator(emded, doc_len, doc_attention_size, lstm_layer=1,keep_prob=0.7):
+	def _inititate_doc_aggregator(self, embed, doc_len, doc_attention_size, num_class=None, lstm_layer=1, keep_prob=0.7, multiatt=True):
 		'''
 		this is the heler function for initiate_doc_attention_aggregator()
 		'''
@@ -114,14 +113,17 @@ class DocAggregator(object):
 			self.doc_attention_aggregator = Aggregator(sequence_length=doc_len,embedding_size=self.sent_embedding_size,
 				attention_size=self.doc_attention_size, embed=embed, n_hidden=self.doc_embedding_size, lstm_layer=lstm_layer, keep_prob=0.7,idd=self.idd)
 
-			if self.lstm_layer == 1:
-				self.doc_attention_aggregator.init_attention_aggregator_lstm()
+			#if using multiattention framework
+			if multiatt == True :
+				self.doc_attention_aggregator.init_multiattention_aggregator_lstm(num_class=num_class)
 			else:
-				self.doc_attention_aggregator.init_attention_aggregator()
+				self.doc_attention_aggregator.nit_attention_aggregator()
 
-	def _calculate_sentence_encodings(doc_embed,seq_len):
+#			self.doc_attention_aggregator.init_attention_aggregator()
 
-		doc_unstack = tf.unstack(doc_embed)
+	def _calculate_sentence_encodings(self, doc_embed,seq_len):
+
+		docunstack = tf.unstack(doc_embed)
 
 		# document lengths of each sentence in each batch for doc
 		seq_len_unstack = tf.unstack(seq_len)
@@ -140,18 +142,21 @@ class DocAggregator(object):
 			doc_context.append(context)
 
 		#stack all (doc_batch_size) doc1 context vectors
-		doc_context = tf.stack(self.doc_context)
+		doc_context = tf.stack(doc_context)
 
 		return doc_context
 
 	def calculate_document_vector(self,doc_embed, seq_len, doc_len,keep_prob=0.7):
 
-		doc_context = _calculate_sentence_encodings(doc_embed,seq_len)
+		doc_context = self._calculate_sentence_encodings(doc_embed,seq_len)
 
-		doc_vector = self.sent_aggregator.calculate_attention_with_lstm(doc_context, doc_len)
+		doc_vector = self.doc_attention_aggregator.caluculate_multiattention_with_lstm(doc_context, doc_len)
+
+#		doc_vector = self.doc_attention_aggregator.calculate_attention_with_lstm(doc_context, doc_len)
 
 		context_vector = tf.nn.dropout(doc_vector, keep_prob)
 
+		return context_vector
 
 
 class Aggregator(object):
@@ -162,13 +167,14 @@ class Aggregator(object):
 		self.idd = idd #name for this instance
 		self.embedding_size = embedding_size #dimension of word-vectors/sentence-vectors 
 		self.attention_size = attention_size #dimension of attention vector
-		self.n_hidden = n_hidden #hidden layer num of features if using lstm_layer=1
 		self.keep_prob = keep_prob #droupout keep proability
 
 		if lstm_layer == 1:
 			# if lstm_layer == 1, then one  has to also give embed to initiate RNN
 			# Define lstm cells with tensorflow
 			# Forward direction cell
+
+			self.n_hidden = n_hidden #hidden layer num of features if using lstm_layer=1
 
 			with tf.variable_scope(self.idd+'backward'):
 				self.lstm_bw_cell = tf.contrib.rnn.BasicLSTMCell(self.n_hidden)
@@ -179,14 +185,25 @@ class Aggregator(object):
 			print("Initiated Aggregator with LSTM layer")
 
 		else:
+
+			self.n_hidden = embedding_size #hidden layer num of features if using lstm_layer
 			print("Initiated Aggregator without LSTM layer")
 
 			# Backward direction cell
 #			with tf.variable_scope('backward'):
 #				self.lstm_fw_cell = rnn.BasicLSTMCell(self.n_hidden, forget_bias=1.0)
 
-#	def multiattention_based_aggregator(self, embed, att_type=50):
+	def init_multiattention_aggregator_lstm(self,num_class):
 
+		self.attention_task = tf.Variable(tf.random_uniform([num_class, self.attention_size], -1.0, 1.0),
+			name=self.idd+'attention_vector')
+
+		self.attention_task = tf.unstack(self.attention_task)
+
+		self.trans_weights = tf.Variable(tf.zeros([self.n_hidden, self.attention_size]),
+			name=self.idd+'transformation_weights')
+
+		self.trans_bias = tf.Variable(tf.zeros([self.attention_size]), name=self.idd+'_trans_bias')
 
 
 	def init_attention_aggregator(self):
@@ -196,18 +213,8 @@ class Aggregator(object):
 		self.attention_task = tf.Variable(tf.random_uniform([1, self.attention_size], -1.0, 1.0),
 			name=self.idd+'attention_vector')
 
-		self.trans_weights = tf.Variable(tf.zeros([self.embedding_size, self.attention_size]),
-			name=self.idd+'transformation_weights')
-
-		self.trans_bias = tf.Variable(tf.zeros([self.attention_size]), name=self.idd+'_trans_bias')
-
-	def init_attention_aggregator_lstm(self):
-
-		self.attention_task = tf.Variable(tf.random_uniform([1, self.attention_size], -1.0, 1.0),
-			name=self.idd+'attention_vector')
-
 		self.trans_weights = tf.Variable(tf.zeros([self.n_hidden, self.attention_size]),
-		name=self.idd+'transformation_weights')
+			name=self.idd+'transformation_weights')
 
 		self.trans_bias = tf.Variable(tf.zeros([self.attention_size]), name=self.idd+'_trans_bias')
 
@@ -237,11 +244,75 @@ class Aggregator(object):
 		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
 		return context_vector
 
-	def calculate_attention(self, embed):
+	def caluculate_multiattention(self,embed, sequence_length):
 
-		if self.attention_task is None:
-			print("Initiating attention mechanism")
-			init_attention_aggregator()
+		context_vectors = []
+
+		for i in range(0,len(self.attention_task)):
+
+			embeddings_flat = tf.reshape(embed, [-1, self.embedding_size])
+
+			# Now calculate the attention-weight vector.
+
+			# tanh transformation of embeddings
+			keys_flat = tf.tanh(tf.add(tf.matmul(embeddings_flat,
+				self.trans_weights), self.trans_bias))
+
+			# reshape the keys according to our embed vector
+			keys = tf.reshape(keys_flat, tf.concat(axis=0,values=[tf.shape(embed)[:-1], [self.attention_size]]))
+
+			# calculate score for each word embedding and take softmax on it
+			scores = math_ops.reduce_sum(keys * self.attention_task[i], [2])
+			alignments = nn_ops.softmax(scores)
+
+			# expand aligments dimension so that we can multiply it with embed tensor
+			alignments = array_ops.expand_dims(alignments,2)
+
+			# generate context vector by making 
+			context_vector = math_ops.reduce_sum(alignments * embed, [1])
+			context_vector = tf.nn.dropout(context_vector, self.keep_prob)
+			context_vectors.append(context_vector)
+
+		context_vectors = tf.stack(context_vectors)
+		return context_vectors
+
+	def caluculate_multiattention_with_lstm(self,embed, sequence_length):
+
+		context_vectors = []
+
+		for i in range(0,len(self.attention_task)):
+
+			# get BiRNN outputs
+			outputs = BiRNN(self.lstm_bw_cell, embed, sequence_length,idd=self.idd)
+			outputs = tf.nn.dropout(outputs, self.keep_prob)
+
+			embeddings_flat = tf.reshape(outputs, [-1, self.n_hidden])
+
+			# Now calculate the attention-weight vector.
+
+			# tanh transformation of embeddings
+			keys_flat = tf.tanh(tf.add(tf.matmul(embeddings_flat,
+				self.trans_weights), self.trans_bias))
+
+			# reshape the keys according to our embed vector
+			keys = tf.reshape(keys_flat, tf.concat(axis=0,values=[tf.shape(embed)[:-1], [self.attention_size]]))
+
+			# calculate score for each word embedding and take softmax on it
+			scores = math_ops.reduce_sum(keys * self.attention_task[i], [2])
+			alignments = nn_ops.softmax(scores)
+
+			# expand aligments dimension so that we can multiply it with embed tensor
+			alignments = array_ops.expand_dims(alignments,2)
+
+			# generate context vector by making 
+			context_vector = math_ops.reduce_sum(alignments * outputs, [1])
+			context_vector = tf.nn.dropout(context_vector, self.keep_prob)
+			context_vectors.append(context_vector)
+
+		context_vectors = tf.stack(context_vectors)
+		return context_vectors
+
+	def calculate_attention(self, embed):
 
 		embeddings_flat = tf.reshape(embed, [-1, self.embedding_size])
 
