@@ -20,5 +20,6 @@
 	"sentsim_learning_rate": 0.01,
 	"sentsim_batch_size": 20,
 	"num_threads": 20,
-	"keep_prob": 0.7 
+	"keep_prob": 0.7,
+	"threshold": 0.5 
 }

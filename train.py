@@ -88,7 +88,8 @@ class Training(object):
 			doc_lstm_layer=self.params['doc_lstm_layer'], leidos_num_classes=self.params['leidos_num_classes'],
 			ldcsf_num_classes=self.params['ldcsf_num_classes'], task_learning_rate=self.params['task_learning_rate'],
 			multiatt=self.params['multiatt'], model_name=self.model_name, max_length=self.params['max_length'],
-			sentsim_learning_rate=self.params['sentsim_learning_rate'], sentsim_batch_size=self.params['sentsim_batch_size'])
+			sentsim_learning_rate=self.params['sentsim_learning_rate'], sentsim_batch_size=self.params['sentsim_batch_size'],
+			threshold=self.params['threshold'])
 		print("DocClassifier initiated !!")
 
 	def _generate_test_batch_leidos_classfication(self):

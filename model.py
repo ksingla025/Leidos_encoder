@@ -59,7 +59,8 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 		learning_rate=0.01, sent_attention_size=100, doc_attention_size=100, sent_embedding_size=100,
 		doc_embedding_size=100, sent_lstm_layer=1, doc_lstm_layer=1, leidos_num_classes=50,
 		ldcsf_num_classes=12,task_learning_rate=.01, multiatt=True, model_name='test_leidos',
-		max_length=50,sentsim_learning_rate=0.01, sentsim_batch_size=20, num_threads=20):
+		max_length=50,sentsim_learning_rate=0.01, sentsim_batch_size=20, threshold = 0.5,
+		num_threads=20):
 
 		#set parameters
 		self.embedding_size = embedding_size
@@ -83,6 +84,7 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 		self.sentsim_learning_rate = sentsim_learning_rate
 		self.logs_path = LOGS_PATH+model_name
 		self.sentsim_batch_size = sentsim_batch_size
+		self.threshold = threshold
 
 		self._build_dictionaries()
 
@@ -348,9 +350,9 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 				self.var_list_ldcsf.append(pred_bias_ldcsf)
 
 				self.logit_ldcsf = tf.matmul(self.document_vector_ldcsf, pred_weights_ldcsf) + pred_bias_ldcsf
-				self.predictions_ldcsf = tf.nn.sigmoid(self.logit_ldcsf)
-				self.predict_ldcsf = tf.where(self.predictions_ldcsf > 0.5, tf.ones_like(self.predictions_ldcsf),
-					tf.zeros_like(self.predictions_ldcsf),name='predict_ldcsf_1')
+				self.predictions_ldcsf = tf.nn.sigmoid(self.logit_ldcsf, name='predict_ldcsf_sigmoid')
+				self.predict_ldcsf = tf.where(self.predictions_ldcsf > self.threshold, tf.ones_like(self.predictions_ldcsf),
+					tf.zeros_like(self.predictions_ldcsf),name='predict_ldcsf_threshold')
 
 			with tf.name_scope('Leidos-DocClassifier-Loss'):
 

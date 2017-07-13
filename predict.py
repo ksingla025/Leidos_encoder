@@ -37,7 +37,7 @@ from lib.attention_based_aggregator import *
 
 class ClassifierPredict(object):
 
-	def __init__(self,model='./models/test3',parameters='./lib/parameters.json',
+	def __init__(self,model='./models/test4',parameters='./lib/parameters.json',
 		theme_dic = DATA_ID+'ldcsf_theme_dic.p'):
 
 		"""Step 0: load trained model and parameters"""
@@ -67,7 +67,8 @@ class ClassifierPredict(object):
 		self.document_vector = self.graph.get_tensor_by_name("AttentionBasedAggregator/document-vectorss:0")
 #		self.labels_batch = self.graph.get_tensor_by_name("labels_batch:0")
 
-		self.predict_ldcsf = self.graph.get_tensor_by_name("Ldcsf-Att-Prediction-Layer/predict_ldcsf_1:0")
+		self.predict_ldcsf_sigmoid = self.graph.get_tensor_by_name("Ldcsf-Att-Prediction-Layer/predict_ldcsf_sigmoid:0")
+		self.predict_ldcsf = self.graph.get_tensor_by_name("Ldcsf-Att-Prediction-Layer/predict_ldcsf_threshold:0")
 
 
 		self.ldcloader = LdcTestLoader()
@@ -77,11 +78,12 @@ class ClassifierPredict(object):
 		doc_batch,doclen_batch,sentlen_batch = self.ldcloader.xml2batch(doc_file=filename)
 
 		with self.sess.as_default():
-			predict_ldcsf = self.sess.run([self.predict_ldcsf], feed_dict={self.doc_batch: doc_batch,
-				self.sentlen_batch: sentlen_batch, self.doclen_batch: doclen_batch,
-				self.keep_prob : 1.0 })
+			predict_ldcsf, predict_ldcsf_sigmoid = self.sess.run([self.predict_ldcsf, self.predict_ldcsf_sigmoid],
+				feed_dict={self.doc_batch: doc_batch, self.sentlen_batch: sentlen_batch,
+				self.doclen_batch: doclen_batch, self.keep_prob : 1.0 })
 
-			predict_ldcsf = predict_ldcsf[0].tolist()[0]
+			print(predict_ldcsf_sigmoid)
+			predict_ldcsf = predict_ldcsf.tolist()[0]
 			predict_ldcsf = list(map(int, predict_ldcsf))
 			print(predict_ldcsf)
 
@@ -89,7 +91,7 @@ class ClassifierPredict(object):
 
 			print("\nPREDICTED THEMES :")
 			for index in predict_indexes:
-				print(self.inv_theme_dic[index])
+				print(self.inv_theme_dic[index],predict_ldcsf_sigmoid[0][index])
 #		summary = tf.Summary(value=[tf.Summary.Value(tag="LDCSF-DocClassifier-validloss",
 #			simple_value=float(loss_ldcsf))])
 
