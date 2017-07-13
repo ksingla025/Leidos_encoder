@@ -69,13 +69,12 @@ def leidos_xml2dic(doc_file):
 	for seg in xml_documents:
 		lines.append( nltk.word_tokenize(seg['ORIGINAL_TEXT']) )
 	doc_output["tokens_text"] = lines
-	print("lines",lines)
 
 	return doc_output
 
 class LdcTestLoader(object):
 
-	def __init__(self, theme_num=15, dictionary = DATA_ID+"dictionary.p",
+	def __init__(self, theme_num=12, dictionary = DATA_ID+"dictionary.p",
 		theme_dic = DATA_ID + 'ldcsf_theme_dic.p'):
 
 		self.theme_num = theme_num
@@ -91,7 +90,6 @@ class LdcTestLoader(object):
 		doc_dic = leidos_xml2dic(doc_file=doc_file)
 		tokens_text = tokens_text_to_index(doc_dic["tokens_text"], lang_ext=lang_ext,
 			dictionary=self.dictionary)
-		print(tokens_text)
 		doc_batch.append(tokens_text)
 
 		doc_len = len(tokens_text)

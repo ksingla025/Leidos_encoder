@@ -12,7 +12,7 @@
 	"doc_lstm_layer": 1,
 	"keep_prob": 0.7,
 	"leidos_num_classes": 50,
-	"ldcsf_num_classes": 15,
+	"ldcsf_num_classes": 12,
 	"task_learning_rate": 0.01,
 	"multiatt": true,
 	"model_name": "test_leidos",

@@ -489,7 +489,7 @@ class LDCSF_Corpus(object):
 	'''
 	builder class for converting LDC SF corpus into word_indexes and also theme into 50 dimentional vectors
 	'''
-	def __init__(self, theme_num=15, dictionary = DATA_ID+"dictionary.p"):
+	def __init__(self, theme_num=12, dictionary = DATA_ID+"dictionary.p"):
 
 		self.dictionary = cPickle.load(open(dictionary, 'rb'))
 

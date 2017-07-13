@@ -58,7 +58,7 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 	def __init__(self,embedding_size=100, sent_aggregator=None, task_batch_size=5, valid_size=10,
 		learning_rate=0.01, sent_attention_size=100, doc_attention_size=100, sent_embedding_size=100,
 		doc_embedding_size=100, sent_lstm_layer=1, doc_lstm_layer=1, leidos_num_classes=50,
-		ldcsf_num_classes=15,task_learning_rate=.01, multiatt=True, model_name='test_leidos',
+		ldcsf_num_classes=12,task_learning_rate=.01, multiatt=True, model_name='test_leidos',
 		max_length=50,sentsim_learning_rate=0.01, sentsim_batch_size=20, num_threads=20):
 
 		#set parameters
