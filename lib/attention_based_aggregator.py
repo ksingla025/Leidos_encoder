@@ -92,7 +92,7 @@ class DocAggregator(object):
 
 			_inititate_sentence_aggregator(emded,sent_len)
 
-		doc_context = self._calculate_sentence_encodings(doc_embed,sent_len)
+		doc_context = self._calculate_sentence_encodings(doc_embed,sent_len,keep_prob=self.keep_prob)
 
 		self._inititate_doc_aggregator(embed=doc_context, doc_len=doc_len,lstm_layer=1,
 			doc_attention_size=self.doc_attention_size, num_class=num_class,
@@ -128,10 +128,11 @@ class DocAggregator(object):
 
 #			self.doc_attention_aggregator.init_attention_aggregator()
 
-	def _calculate_sentence_encodings(self, doc_embed,seq_len):
+	def _calculate_sentence_encodings(self, doc_embed,seq_len,keep_prob):
 
 
 		doc_context = tf.map_fn(self.sent_aggregator.calculate_attention_with_lstm, doc_embed)
+		doc_context = tf.nn.dropout(doc_context, keep_prob)
 
 		##### old method ######
 #		docunstack = tf.unstack(doc_embed)
@@ -159,12 +160,14 @@ class DocAggregator(object):
 
 	def calculate_document_vector(self,doc_embed, seq_len, doc_len,keep_prob=0.7):
 
-		doc_context = self._calculate_sentence_encodings(doc_embed,seq_len)
+		doc_context = self._calculate_sentence_encodings(doc_embed,seq_len,keep_prob=keep_prob)
 
 		if self.multiatt == True:
-			doc_vector = self.doc_attention_aggregator.caluculate_multiattention_with_lstm(doc_context, doc_len)
+			doc_vector = self.doc_attention_aggregator.caluculate_multiattention_with_lstm(doc_context, doc_len,
+				keep_prob=keep_prob)
 		else:
-			doc_vector = self.doc_attention_aggregator.calculate_attention_with_lstm(doc_context, doc_len)
+			doc_vector = self.doc_attention_aggregator.calculate_attention_with_lstm(doc_context, doc_len,
+				keep_prob=keep_prob)
 #		doc_vector = self.doc_attention_aggregator.calculate_attention_with_lstm(doc_context, doc_len)
 
 		context_vector = tf.nn.dropout(doc_vector, keep_prob)
@@ -252,7 +255,7 @@ class Aggregator(object):
 	def average(self, embed):
 
 		context_vector = math_ops.reduce_mean(embed, [1])
-		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
+#		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
 		return context_vector
 
 	def average_with_lstm(self, embed):
@@ -269,7 +272,7 @@ class Aggregator(object):
 
 
 		context_vector = math_ops.reduce_mean(outputs, [1])
-		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
+#		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
 		return context_vector
 
 	def caluculate_multiattention(self,embed, sequence_length):
@@ -298,13 +301,13 @@ class Aggregator(object):
 
 			# generate context vector by making 
 			context_vector = math_ops.reduce_sum(alignments * embed, [1])
-			context_vector = tf.nn.dropout(context_vector, self.keep_prob)
+#			context_vector = tf.nn.dropout(context_vector, self.keep_prob)
 			context_vectors.append(context_vector)
 
 		context_vectors = tf.stack(context_vectors)
 		return context_vectors
 
-	def caluculate_multiattention_with_lstm(self,embed, sequence_length):
+	def caluculate_multiattention_with_lstm(self,embed, sequence_length,keep_prob):
 
 		context_vectors = []
 
@@ -312,7 +315,7 @@ class Aggregator(object):
 
 			# get BiRNN outputs
 			outputs = BiRNN(self.lstm_bw_cell, embed, sequence_length,idd=self.idd)
-			outputs = tf.nn.dropout(outputs, self.keep_prob)
+			outputs = tf.nn.dropout(outputs, keep_prob)
 
 			embeddings_flat = tf.reshape(outputs, [-1, self.n_hidden])
 
@@ -334,7 +337,7 @@ class Aggregator(object):
 
 			# generate context vector by making 
 			context_vector = math_ops.reduce_sum(alignments * outputs, [1])
-			context_vector = tf.nn.dropout(context_vector, self.keep_prob)
+			context_vector = tf.nn.dropout(context_vector, keep_prob)
 			context_vectors.append(context_vector)
 
 		context_vectors = tf.stack(context_vectors)
@@ -362,10 +365,10 @@ class Aggregator(object):
 
 		# generate context vector by making 
 		context_vector = math_ops.reduce_sum(alignments * embed, [1])
-		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
+#		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
 		return context_vector
 
-	def calculate_attention_with_lstm(self, embed, sequence_length=None):
+	def calculate_attention_with_lstm(self, embed, keep_prob=0.7, sequence_length=None):
 
 		'''
 		this method only works if you use
@@ -378,7 +381,7 @@ class Aggregator(object):
 
 		# get BiRNN outputs
 		outputs = BiRNN(self.lstm_bw_cell, embed, sequence_length,idd=self.idd)
-		outputs = tf.nn.dropout(outputs, self.keep_prob)
+#		outputs = tf.nn.dropout(outputs, keep_prob)
 
 		embeddings_flat = tf.reshape(outputs, [-1, self.n_hidden])
 
@@ -398,5 +401,5 @@ class Aggregator(object):
 
 		# generate context vector by making 
 		context_vector = math_ops.reduce_sum(alignments * outputs, [1])
-		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
+#		context_vector = tf.nn.dropout(context_vector, keep_prob)
 		return context_vector

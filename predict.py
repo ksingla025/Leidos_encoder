@@ -77,11 +77,14 @@ class ClassifierPredict(object):
 
 		doc_batch,doclen_batch,sentlen_batch = self.ldcloader.xml2batch(doc_file=filename)
 
+		print(doc_batch,doclen_batch,sentlen_batch)
+		
 		with self.sess.as_default():
-			predict_ldcsf, predict_ldcsf_sigmoid = self.sess.run([self.predict_ldcsf, self.predict_ldcsf_sigmoid],
-				feed_dict={self.doc_batch: doc_batch, self.sentlen_batch: sentlen_batch,
+			predict_ldcsf, predict_ldcsf_sigmoid, document_vector = self.sess.run([self.predict_ldcsf, self.predict_ldcsf_sigmoid,
+				self.document_vector], feed_dict={self.doc_batch: doc_batch, self.sentlen_batch: sentlen_batch,
 				self.doclen_batch: doclen_batch, self.keep_prob : 1.0 })
 
+			print(document_vector)
 			print(predict_ldcsf_sigmoid)
 			predict_ldcsf = predict_ldcsf.tolist()[0]
 			predict_ldcsf = list(map(int, predict_ldcsf))

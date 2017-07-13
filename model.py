@@ -263,7 +263,7 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 
 				self.doc_embed = tf.nn.embedding_lookup(self.embeddings, self.doc_batch)
 				self.document_vector = self.document_aggregator.calculate_document_vector(self.doc_embed,
-					self.sentlen_batch, self.doclen_batch)
+					self.sentlen_batch, self.doclen_batch,keep_prob=self.keep_prob)
 
 
 				if self.multiatt == True:
