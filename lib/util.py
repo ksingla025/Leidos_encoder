@@ -17,6 +17,9 @@ def preprocess_text(text):
     text = text.lower()
     return text
 
+def gather_axis(params, indices, axis=-1):
+    return tf.stack(tf.unstack(tf.gather(tf.unstack(params, axis=axis), indices)), axis=axis)
+
 def _attn_mul_fun(keys, query):
 
     return math_ops.reduce_sum(keys * query, [2])

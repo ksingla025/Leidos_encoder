@@ -308,8 +308,8 @@ def generate_batch_data_task_docsim(langpair=['en-de'], max_sent_len = 50, max_d
 
 
 #############################################################################
-
 ############## LEIDOS CLASSIFICATION DATA BATCH GENERATOR ###################
+
 def generate_train_batch_data_task_leidos(max_sent_len=50,max_doc_size=100):
 
 	'''
@@ -394,15 +394,71 @@ def generate_test_batch_data_task_leidos(max_sent_len=50,max_doc_size=100):
 
 	return epoch
 
+def _onehot2binarylabels(labels):
+
+	binary_labels = []
+	for i in range(0,len(labels)):
+		if labels[i] == 0:
+			binary = [0,1]
+		else:
+			binary = [1,0]
+
+		binary_labels.append(binary)
+
+	return binary_labels
 #############################################################################
 
+#############################################################################
+############## LDC SF CLASSIFICATION DATA BATCH GENERATOR ###################
 
+def generate_batch_data_task_ldcsf(filename=DATA_ID+"sec_pilot_train.p",
+	max_sent_len=50,max_doc_size=100):
 
+	'''
+	make sure this leidos_train.p exists in DATA_ID folder
+	1. This function takes leidos_train.p which is a dictionary
+	with keys as document ID.
+	2. For each key, we concat 'tokens_title' and 'tokens_text'
+	to make a list of sentences ( list of list)
+	3. Labels is already a list where theme(s) are represented as 1
+	4. We also pad all sentences to max_sent_len
+	5. Data is stored into leidos_train.csv in the following format
+	
+	doc,sent_length,labels
+	doc : list of sentences [100*50]
+	sent_length = [100]
+	labels = [<number of labels>]
+	'''
+	leidos_corpus = cPickle.load(open(filename, 'rb'))
 
+	epoch = []
 
+	for key in leidos_corpus.keys():
+		sample = []
+		labels = leidos_corpus[key]['theme']		
+		doc = leidos_corpus[key]['tokens_title'] + leidos_corpus[key]['tokens_text']
+		doc_len = len(doc)
+		'''
+		1. if the doc_len is more than max_doc_size, then we only take
+		sentences max_doc_size
+		2. also check if there is an empty document
+		'''
+		if doc_len > max_doc_size:
+			doc_len = max_doc_size
+		else:
+			assert doc_len != 0
 
+		sent_length = []
+		for line in doc:
+			sent_length.append(len(line))
+		doc,sent_length = document_pad(doc, 0, max_sent_len=max_sent_len, doc_length=max_doc_size, sent_length=sent_length)
+		sample.append(doc)
+		sample.append(doc_len)
+		sample.append(sent_length)
+		sample.append(labels)
+		epoch.append(sample)
 
-
+	return epoch
 
 
 

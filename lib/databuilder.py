@@ -365,14 +365,35 @@ class DataBuilder(object):
 			cPickle.dump(ted, open(DATA_ID + 'ted.p', 'wb'))
 
 
+##### utility function for both leidos and ldc_sf corpus ######
+def tokens_text_to_index(tokens_text, lang_ext, dictionary):
+	''' 
+	tokens text is a list of lines, we just replace each word by the dictionary index
+	'''
+	processed_text = []
+
+	for line in tokens_text:
+		line = " ".join(line)
+		line = preprocess_text(line)
+		line = line.split()
+		for i in range(0,len(line)):
+			line[i] = line[i] + ":ID:" + lang_ext
+			if line[i] in dictionary:
+				line[i] = dictionary[line[i]]
+			else:
+				line[i] = 0
+		processed_text.append(line)
+
+	return processed_text
+
 # iterable corpus
 class LeidosCorpus(object):
 
-	def __init__(self, dictionary = DATA_ID+"dictionary.p"):
+	def __init__(self, theme_num=50, dictionary = DATA_ID+"dictionary.p"):
 
 		self.dictionary = cPickle.load(open(dictionary, 'rb'))
-
 		#theme_dic is used to keep counter of themes
+		self.theme_num = theme_num
 		self.theme_dic = {}
 		self.theme_counter = 0
 
@@ -382,7 +403,6 @@ class LeidosCorpus(object):
 		'''
 		data = self._load_json_file(filename=DATA_LEIDOS+"tokenized_"+lang_ext+"_train.json", lang_ext=lang_ext)
 		cPickle.dump(data, open(DATA_ID + 'leidos_train.p', 'wb'))
-
 
 	def build_dataset_test(self, lang_ext = ['en','es','fr']):
 		'''
@@ -396,8 +416,7 @@ class LeidosCorpus(object):
 
 			if lang == 'en':			
 				data = self._load_json_file(filename=DATA_LEIDOS+"tokenized_en_test.json",lang_ext=lang)
-				test_data[lang] = data
-
+				test_data[lang] = datas
 			else:
 				# en & fr data has no labels
 				data = self._load_json_file(filename=DATA_LEIDOS+"tokenized_"+lang+"_test.json",lang_ext=lang)
@@ -421,10 +440,12 @@ class LeidosCorpus(object):
 				data = json.loads(line)
 				file_data[data["id"]] = {}
 
-				index_tokens_text = self._tokens_text_to_index(data["tokens_text"], lang_ext=lang_ext)
+				index_tokens_text = tokens_text_to_index(data["tokens_text"], lang_ext=lang_ext,
+					dictionary=self.dictionary)
 				file_data[data["id"]]["tokens_text"] = index_tokens_text
 
-				index_tokens_title = self._tokens_text_to_index(data["tokens_title"], lang_ext=lang_ext)
+				index_tokens_title = tokens_text_to_index(data["tokens_title"], lang_ext=lang_ext,
+					dictionary=self.dictionary)
 				file_data[data["id"]]["tokens_title"] = index_tokens_title
 
 				#if theme exists in data line
@@ -435,26 +456,6 @@ class LeidosCorpus(object):
 
 
 		return file_data
-
-	def _tokens_text_to_index(self, tokens_text, lang_ext):
-		''' 
-		tokens text is a list of lines, we just replace each word by the dictionary index
-		'''
-		processed_text = []
-
-		for line in tokens_text:
-			line = " ".join(line)
-			line = preprocess_text(line)
-			line = line.split()
-			for i in range(0,len(line)):
-				line[i] = line[i] + ":ID:" + lang_ext
-				if line[i] in self.dictionary:
-					line[i] = self.dictionary[line[i]]
-				else:
-					line[i] = 0
-			processed_text.append(line)
-
-		return processed_text
 
 	def _add_theme_to_file(self, nothemefile, themefile):
 		''' 
@@ -475,7 +476,7 @@ class LeidosCorpus(object):
 		'''
 		it takes a list of themes for a sample document and then convert it to one hot
 		'''
-		theme_vector = [0]*50
+		theme_vector = [0]*self.theme_num
 		for theme in themelist:
 			if theme not in self.theme_dic.keys():
 				self.theme_dic[theme] = self.theme_counter
@@ -483,3 +484,83 @@ class LeidosCorpus(object):
 			theme_vector[self.theme_dic[theme]] = 1
 
 		return theme_vector
+
+class LDCSF_Corpus(object):
+	'''
+	builder class for converting LDC SF corpus into word_indexes and also theme into 50 dimentional vectors
+	'''
+	def __init__(self, theme_num=15, dictionary = DATA_ID+"dictionary.p"):
+
+		self.dictionary = cPickle.load(open(dictionary, 'rb'))
+
+		#theme_dic is used to keep counter of themes
+		self.theme_num = theme_num
+		self.theme_dic = {}
+		self.theme_counter = 0
+
+	def build_dataset_train(self, lang_ext = 'en'):
+		'''
+		there should be a file sec_pilot_english_train.json in DATA_LDC_SF folder
+		'''
+		data = self._load_json_file(filename=DATA_LDC_SF+"sec_pilot.json", lang_ext=lang_ext)
+		cPickle.dump(data, open(DATA_ID + 'sec_pilot_train.p', 'wb'))
+		cPickle.dump(self.theme_dic, open(DATA_ID + 'ldcsf_theme_dic.p', 'wb'))
+
+	def build_dataset_test(self, lang_ext = 'en'):
+		'''
+		there should be a file sec_pilot_english_train.json in DATA_LDC_SF folder
+		'''
+		data = self._load_json_file(filename=DATA_LDC_SF+"sec_pilot_evaluation.json", lang_ext=lang_ext)
+		cPickle.dump(data, open(DATA_ID + 'sec_pilot_eval.p', 'wb'))
+
+
+
+	def _load_json_file(self,filename,lang_ext):
+
+		file_data = {}
+		f = codecs.open(filename,"r","utf-8")
+		done = False
+		while not done:
+
+			line = f.readline()
+			if line == '':
+				done = True
+			else:
+				data = json.loads(line)
+				print(data)
+				index_tokens_text = tokens_text_to_index(data["tokens_text"], lang_ext=lang_ext,
+					dictionary=self.dictionary)
+
+				index_tokens_title = tokens_text_to_index(data["tokens_title"], lang_ext=lang_ext,
+					dictionary=self.dictionary)
+				#if theme exists in data line
+				if len(data['theme']) == 0:
+						print("No theme")
+				else:
+					file_data[data["id"]] = {}
+					file_data[data["id"]]["theme"] = self._themelist_to_onehot(themelist=data["theme"])
+					file_data[data["id"]]["tokens_title"] = index_tokens_title
+					file_data[data["id"]]["tokens_text"] = index_tokens_text
+
+		return file_data
+
+
+	def _themelist_to_onehot(self,themelist):
+		'''
+		it takes a list of themes for a sample document and then convert it to one hot
+		'''
+		theme_vector = [0]*self.theme_num
+		for theme in themelist:
+			if theme not in self.theme_dic.keys():
+				self.theme_dic[theme] = self.theme_counter
+				self.theme_counter = self.theme_counter + 1
+			theme_vector[self.theme_dic[theme]] = 1
+
+		return theme_vector
+
+
+
+
+
+
+

@@ -42,3 +42,6 @@ DATA_LEIDOS_ES_TEST = DATA_LEIDOS+"pretrans_tokenized_es.json"
 DATA_LEIDOS_FR_TEST = DATA_LEIDOS+"pretrans_tokenized_fr.json"
 DATA_LEIDOS_EN_TRAIN = DATA_LEIDOS+"tokenized_3_en_train.json"
 DATA_LEIDOS_EN_TEST = DATA_LEIDOS+"tokenized_3_en_test.json"
+
+# ldc data paths
+DATA_LDC_SF = DATA+"ldc_sf/"
