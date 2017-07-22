@@ -31,7 +31,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 # external library imports
 #from utils.twokenize import *
-from model import DocClassifier, get_class_logits
+from model import DocClassifier
 from lib.path import *
 from lib.util import *
 from lib.attention_based_aggregator import *
@@ -75,7 +75,7 @@ class YelpTraining(object):
 		self.yelp_data['test'] = generate_batch_data_task_yelp(filename=DATA_ID+"yelp_test.p")
 		
 
-		self.classifier = DocClassifier(embedding_size=64, sent_aggregator=self.params['sent_aggregator'],
+		self.classifier = DocClassifier(embedding_size=64	, sent_aggregator=self.params['sent_aggregator'],
 				task_batch_size=self.params['task_batch_size'], valid_size=self.params['valid_size'],
 				learning_rate=self.params['learning_rate'], sent_attention_size=self.params['sent_attention_size'],
 				doc_attention_size=self.params['doc_attention_size'], sent_embedding_size=self.params['sent_embedding_size'],

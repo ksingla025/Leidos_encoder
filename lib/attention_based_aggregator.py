@@ -204,13 +204,16 @@ class Aggregator(object):
 			self.n_hidden = embedding_size #hidden layer num of features if using lstm_layer
 			print("Initiated Aggregator without LSTM layer")
 
-		self.attention_task = tf.Variable(tf.random_uniform([1, self.attention_size], -1.0, 1.0),
+		self.attention_task = tf.Variable(tf.zeros([1, self.attention_size]),
 			name=self.idd+'attention_vector')
 
 		self.aggregator_variables.append(self.attention_task)
 
-		self.trans_weights = tf.Variable(tf.zeros([self.n_hidden, self.attention_size]),
+		self.trans_weights = tf.Variable(tf.random_uniform([self.n_hidden, self.attention_size], -1.0, 1.0),
 			name=self.idd+'transformation_weights')
+
+#		self.trans_weights = tf.Variable(tf.zeros([self.n_hidden, self.attention_size]),
+#			name=self.idd+'transformation_weights')
 
 		self.trans_bias = tf.Variable(tf.zeros([self.attention_size]), name=self.idd+'_trans_bias')
 
@@ -282,13 +285,22 @@ class Aggregator(object):
 #		context_vector = tf.nn.dropout(context_vector, self.keep_prob)
 		return context_vector
 
-	def caluculate_multiattention(self,embed, sequence_length):
+	def calculate_multiattention(self,embed):
+
+		embeddings_flat = tf.reshape(embed, [-1, self.n_hidden])
+
+		# tanh transformation of embeddings
+		keys_flat = tf.tanh(tf.add(tf.matmul(embeddings_flat,
+			self.trans_weights), self.trans_bias))
+
+		# reshape the keys according to our embed vector
+		keys = tf.reshape(keys_flat, tf.concat(axis=0,values=[tf.shape(embed)[:-1], [self.attention_size]]))
 
 		context_vectors = []
 
 		for i in range(0,len(self.attention_task)):
 
-			embeddings_flat = tf.reshape(embed, [-1, self.embedding_size])
+			
 
 			# Now calculate the attention-weight vector.
 
@@ -321,33 +333,8 @@ class Aggregator(object):
 		# get BiRNN outputs
 		outputs = BiRNN(self.lstm_bw_cell, embed, sequence_length,idd=self.idd)
 #		outputs = tf.nn.dropout(outputs, keep_prob)
-		
-		embeddings_flat = tf.reshape(outputs, [-1, self.n_hidden])
 
-		# Now calculate the attention-weight vector.
-
-		# tanh transformation of embeddings
-		keys_flat = tf.tanh(tf.add(tf.matmul(embeddings_flat,
-			self.trans_weights), self.trans_bias))
-
-		# reshape the keys according to our embed vector
-		keys = tf.reshape(keys_flat, tf.concat(axis=0,values=[tf.shape(embed)[:-1], [self.attention_size]]))
-
-		for i in range(0,len(self.attention_task)):
-
-			# calculate score for each word embedding and take softmax on it
-			scores = math_ops.reduce_sum(keys * self.attention_task[i], [2])
-			alignments = nn_ops.softmax(scores)
-
-			# expand aligments dimension so that we can multiply it with embed tensor
-			alignments = array_ops.expand_dims(alignments,2)
-
-			# generate context vector by making 
-			context_vector = math_ops.reduce_sum(alignments * outputs, [1])
-#			context_vector = tf.nn.dropout(context_vector, keep_prob)
-			context_vectors.append(context_vector)
-
-		context_vectors = tf.stack(context_vectors)
+		context_vectors = self.calculate_multiattention(outputs)
 		return context_vectors
 
 	def calculate_attention(self, embed):
@@ -388,7 +375,7 @@ class Aggregator(object):
 		outputs = BiRNN(self.lstm_bw_cell, embed, sequence_length,idd=self.idd)
 #		outputs = tf.nn.dropout(outputs, keep_prob)
 
-		context_vector = self.calculate_attention(embed)
+		context_vector = self.calculate_attention(outputs)
 #		context_vector = tf.nn.dropout(context_vector, keep_prob)
 		return context_vector
 

@@ -9,6 +9,17 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.contrib import rnn
 
+def multilayer_perceptron(x, weights, biases):
+    # Hidden layer with RELU activation
+    layer_1 = tf.add(tf.matmul(x, weights['h1']), biases['b1'])
+    layer_1 = tf.nn.relu(layer_1)
+    # Hidden layer with RELU activation
+    layer_2 = tf.add(tf.matmul(layer_1, weights['h2']), biases['b2'])
+    layer_2 = tf.nn.relu(layer_2)
+    # Output layer with linear activation
+    out_layer = tf.matmul(layer_2, weights['out']) + biases['out']
+    return out_layer
+
 def preprocess_text(text):
     
     text = text.strip()

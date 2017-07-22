@@ -206,14 +206,25 @@ class DocClassifier(BaseEstimator, TransformerMixin):
 			self.yelp_sentlen_batch, self.yelp_doclen_batch,keep_prob=self.keep_prob)
 
 
-			# Set model weights
-			self.yelp_W = tf.Variable(tf.zeros([self.sent_embedding_size, 5]), name='yelp_weights')
-			self.yelp_b = tf.Variable(tf.zeros([5]), name='yelp_bias')
+			# Store layers weight & bias
+			self.yelp_W = {
+			'h1': tf.Variable(tf.random_normal([self.sent_embedding_size, 64])),
+			'h2': tf.Variable(tf.random_normal([64, 64])),
+			'out': tf.Variable(tf.random_normal([64, 5]))
+			}
+			self.yelp_b = {
+			'b1': tf.Variable(tf.random_normal([64])),
+			'b2': tf.Variable(tf.random_normal([64])),
+			'out': tf.Variable(tf.random_normal([5]))
+			}
 
-			self.yelp_pred = tf.nn.softmax(tf.matmul(self.yelp_document_vector, self.yelp_W) + self.yelp_b) # Softmax
-			self.yelp_cost = tf.reduce_mean(-tf.reduce_sum(self.yelp_labels_batch*tf.log(self.yelp_pred), reduction_indices=1),name='yelp_cost')
+			# Construct model
+			self.yelp_pred = multilayer_perceptron(self.yelp_document_vector, self.yelp_W, self.yelp_b)
 
-			self.yelp_mlp_optimizer = tf.train.GradientDescentOptimizer(0.1).minimize(self.yelp_cost,name='yelp_optimizer')
+			# Define loss and optimizer
+			self.yelp_cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=self.yelp_pred,
+				labels=self.yelp_labels_batch),name='yelp_cost')
+			self.yelp_mlp_optimizer = tf.train.AdamOptimizer(learning_rate=0.1).minimize(self.yelp_cost,name='yelp_optimizer')
 
 			self.yelp_acc = tf.equal(tf.argmax(self.yelp_pred, 1), tf.argmax(self.yelp_labels_batch, 1))
 			self.yelp_acc = tf.reduce_mean(tf.cast(self.yelp_acc, tf.float32), name='yelp_accuracy')
