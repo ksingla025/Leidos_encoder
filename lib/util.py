@@ -20,6 +20,13 @@ def preprocess_text(text):
 def gather_axis(params, indices, axis=-1):
     return tf.stack(tf.unstack(tf.gather(tf.unstack(params, axis=axis), indices)), axis=axis)
 
+
+def map_fn_mult(fn, arrays, dtype=tf.float32):
+    # assumes all arrays have same leading dim
+    indices = tf.range(tf.shape(arrays[0])[0])
+    out = tf.map_fn(lambda ii: fn(*[array[ii] for array in arrays]), indices, dtype=dtype)
+    return out
+
 def _attn_mul_fun(keys, query):
 
     return math_ops.reduce_sum(keys * query, [2])
@@ -155,4 +162,81 @@ def triplet_loss(x1, x2, x3, doc_len, margin = 0.0):
 
     loss = tf.add(loss_match, loss_mismatch)
 
-    return loss, loss_match, loss_mismatch,cosine_x1x2, x1_magnitudes, x2_magnitudes, x3_magnitudes 
+    return loss, loss_match, loss_mismatch,cosine_x1x2, x1_magnitudes, x2_magnitudes, x3_magnitudes
+
+def input_pipeline_skipgram(filenames, batch_size, num_epochs=None):
+    filename_queue = tf.train.string_input_producer(
+        filenames, num_epochs=num_epochs, shuffle=True)
+    example, label = read_format_skipgram(filename_queue)
+    # min_after_dequeue defines how big a buffer we will randomly sample
+    #   from -- bigger means better shuffling but slower start up and more
+    #   memory used.
+    # capacity must be larger than min_after_dequeue and the amount larger
+    #   determines the maximum we will prefetch.  Recommendation:
+    #   min_after_dequeue + (num_threads + a small safety margin) * batch_size
+    min_after_dequeue = 50000
+    capacity = min_after_dequeue + 3 * batch_size
+    example_batch, label_batch = tf.train.shuffle_batch(
+        [example, label], batch_size=batch_size, capacity=capacity,
+        min_after_dequeue=min_after_dequeue)
+    return example_batch, label_batch
+
+def read_format_skipgram(filename_queue):
+    # file reader and value generator
+    reader = tf.TextLineReader()
+    key, value = reader.read(filename_queue)
+
+    # default format of the file
+    record_defaults = [[1], [1]]
+
+    # get values in csv files
+    col1, col2 = tf.decode_csv(value,record_defaults=record_defaults)
+
+    # col1 is input, col2 is predicted label
+    label = tf.stack([col2])
+    return col1, label
+
+def read_format_sentsim(filename_queue,max_length=50):
+
+    # file reader and value generator
+    reader = tf.TextLineReader()
+    key, value = reader.read(filename_queue)
+
+    # default format of the file
+    record_defaults = [[]] * ((max_length*2)+3)
+    record_defaults[1].append(0)
+
+    # extract all csv columns
+    features = tf.decode_csv(value,record_defaults=record_defaults)
+
+    # make different inputs for two sentences/examples
+    example1 = features[:max_length]
+    example2 = features[max_length:max_length*2]
+
+    example1_len = features[-3]
+    example2_len = features[-2]
+
+    # extract label, whether they are similar/1 or not/0
+    label = tf.to_float(features[-1])
+    label = tf.stack([label])
+
+    return example1, example2, example1_len, example2_len, label
+
+def input_pipeline_sentsim(filenames, batch_size, num_epochs=None):
+
+    filename_queue = tf.train.string_input_producer(
+        filenames, num_epochs=num_epochs, shuffle=True)
+    example1, example2, example1_len, example2_len, label = read_format_sentsim(filename_queue)
+    # min_after_dequeue defines how big a buffer we will randomly sample
+    #   from -- bigger means better shuffling but slower start up and more
+    #   memory used.
+    # capacity must be larger than min_after_dequeue and the amount larger
+    #   determines the maximum we will prefetch.  Recommendation:
+    #   min_after_dequeue + (num_threads + a small safety margin) * batch_size
+    min_after_dequeue = 100000
+    capacity = min_after_dequeue + 3 * batch_size 
+    example1_batch, example2_batch, example1_len_batch, example2_len_batch,\
+    label_batch = tf.train.shuffle_batch([example1, example2, example1_len, example2_len, label],
+        batch_size=batch_size, capacity=capacity, min_after_dequeue=min_after_dequeue,shapes=None)
+        
+    return example1_batch, example2_batch, example1_len_batch, example2_len_batch, label_batch

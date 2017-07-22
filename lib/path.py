@@ -45,3 +45,6 @@ DATA_LEIDOS_EN_TEST = DATA_LEIDOS+"tokenized_3_en_test.json"
 
 # ldc data paths
 DATA_LDC_SF = DATA+"ldc_sf/"
+
+#yelp data path
+DATA_YELP = DATA+"yelp/"

@@ -14,6 +14,7 @@ import _pickle as cPickle
 import pdb
 import codecs
 import json
+import nltk
 
 #from utils.twokenize import *
 from lib.path import *
@@ -21,8 +22,9 @@ from lib.path import *
 def preprocess_text(text):
 	
 	text = text.strip()
+	text = nltk.word_tokenize(text)
 #	text = tokenizeRawTweetText(text)
-#	text = ' '.join(text)
+	text = ' '.join(text)
 	text = text.lower()
 #	text = text.lower()
 
@@ -386,6 +388,74 @@ def tokens_text_to_index(tokens_text, lang_ext, dictionary):
 
 	return processed_text
 
+class YelpCorpus(object):
+
+	def __init__(self,theme_num=5, dictionary=DATA_ID+"dictionary.p"):
+
+		self.dictionary = cPickle.load(open(dictionary, 'rb'))
+		#theme_dic is used to keep counter of themes
+		self.theme_num = theme_num
+		self.theme_dic = {}
+		self.theme_counter = 0
+
+	def build_dataset(self, lang_ext = 'en'):
+		'''
+		there should be a file tokenized_en_train.json in DATA_LEIDOS folder
+		'''
+		print("Loading Yelp dataset")
+		data = self._load_json_file(filename=DATA_YELP+"yelp_toy.json", lang_ext="en")
+		print("theme counter", self.theme_counter)
+
+		print("data_fetched")
+		random.shuffle(data)
+		print("shuffled data")
+
+		train_bound = int(len(data)*0.8)
+		train = data[:train_bound]
+		test = data[train_bound:len(data)]
+		cPickle.dump(train, open(DATA_ID + 'yelp_train.p', 'wb'))
+		cPickle.dump(train, open(DATA_ID + 'yelp_test.p', 'wb'))
+		cPickle.dump(self.theme_dic, open(DATA_ID + 'yelp_theme_dic.p', 'wb'))
+
+	def _load_json_file(self,filename,lang_ext="en"):
+
+		file_data = []
+		f = codecs.open(filename,"r","utf-8")
+		done = False
+		while not done:
+
+			line = f.readline()
+			if line == '':
+				done = True
+			else:
+				file_line = []
+				data = json.loads(line)
+
+				data["text"] = nltk.sent_tokenize(data["text"])
+				for i in range(len(data["text"])):
+					data["text"][i] = data["text"][i].split()
+				index_tokens_text = tokens_text_to_index(data["text"], lang_ext=lang_ext,
+					dictionary=self.dictionary)
+				file_line.append(index_tokens_text)
+				file_line.append(self._themelist_to_onehot(data["stars"]))
+				#if theme exists in data line
+				file_data.append(file_line)
+
+		return file_data
+	
+	def _themelist_to_onehot(self,theme):
+		'''
+		it takes a list of themes for a sample document and then convert it to one hot
+		'''
+		theme_vector = [0]*self.theme_num
+		if theme not in self.theme_dic.keys():
+			self.theme_dic[theme] = self.theme_counter
+			self.theme_counter = self.theme_counter + 1
+		theme_vector[self.theme_dic[theme]] = 1
+
+		return theme_vector
+
+
 # iterable corpus
 class LeidosCorpus(object):
 
@@ -403,6 +473,7 @@ class LeidosCorpus(object):
 		'''
 		data = self._load_json_file(filename=DATA_LEIDOS+"tokenized_"+lang_ext+"_train.json", lang_ext=lang_ext)
 		cPickle.dump(data, open(DATA_ID + 'leidos_train.p', 'wb'))
+		cPickle.dump(self.theme_dic, open(DATA_ID + 'leidos_theme_dic.p', 'wb'))
 
 	def build_dataset_test(self, lang_ext = ['en','es','fr']):
 		'''
@@ -416,7 +487,7 @@ class LeidosCorpus(object):
 
 			if lang == 'en':			
 				data = self._load_json_file(filename=DATA_LEIDOS+"tokenized_en_test.json",lang_ext=lang)
-				test_data[lang] = datas
+				test_data[lang] = data
 			else:
 				# en & fr data has no labels
 				data = self._load_json_file(filename=DATA_LEIDOS+"tokenized_"+lang+"_test.json",lang_ext=lang)
@@ -453,6 +524,7 @@ class LeidosCorpus(object):
 					if len(data['theme']) == 0:
 						print("No theme")
 					file_data[data["id"]]["theme"] = self._themelist_to_onehot(data["theme"])
+
 
 
 		return file_data
@@ -530,6 +602,7 @@ class LDCSF_Corpus(object):
 				print(data)
 				index_tokens_text = tokens_text_to_index(data["tokens_text"], lang_ext=lang_ext,
 					dictionary=self.dictionary)
+				print(index_tokens_text)
 
 				index_tokens_title = tokens_text_to_index(data["tokens_title"], lang_ext=lang_ext,
 					dictionary=self.dictionary)
@@ -538,7 +611,10 @@ class LDCSF_Corpus(object):
 						print("No theme")
 				else:
 					file_data[data["id"]] = {}
+					if "need_type" in data["theme"]:
+						data["theme"].remove("need_type")
 					file_data[data["id"]]["theme"] = self._themelist_to_onehot(themelist=data["theme"])
+					print(file_data[data["id"]]["theme"])
 					file_data[data["id"]]["tokens_title"] = index_tokens_title
 					file_data[data["id"]]["tokens_text"] = index_tokens_text
 

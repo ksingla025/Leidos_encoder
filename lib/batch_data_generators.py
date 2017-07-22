@@ -356,6 +356,7 @@ def generate_train_batch_data_task_leidos(max_sent_len=50,max_doc_size=100):
 		sample.append(labels)
 		epoch.append(sample)
 
+	random.shuffle(epoch)
 	return epoch
 
 def generate_test_batch_data_task_leidos(max_sent_len=50,max_doc_size=100):
@@ -391,7 +392,7 @@ def generate_test_batch_data_task_leidos(max_sent_len=50,max_doc_size=100):
 			sample.append(sent_length)
 			sample.append(labels)
 			epoch[lang].append(sample)
-
+	random.shuffle(epoch)
 	return epoch
 
 def _onehot2binarylabels(labels):
@@ -459,6 +460,42 @@ def generate_batch_data_task_ldcsf(filename=DATA_ID+"sec_pilot_train.p",
 		epoch.append(sample)
 
 	return epoch
+
+
+#############################################################################
+############## YELP RATING CLASSIFICATION DATA BATCH GENERATOR ###################
+
+
+def generate_batch_data_task_yelp(filename=DATA_ID+"yelp_train.p",
+	max_sent_len=50,max_doc_size=100):
+	
+	yelp_corpus = cPickle.load(open(filename, 'rb'))
+	epoch = []
+	for line in yelp_corpus:
+		sample = []
+		labels = line[1]
+		doc = line[0]
+		doc_len = len(doc)
+
+		if doc_len > max_doc_size:
+			doc_len = max_doc_size
+		else:
+			assert doc_len != 0
+
+		sent_length = []
+		for line in doc:
+			sent_length.append(len(line))
+		doc,sent_length = document_pad(doc, 0, max_sent_len=max_sent_len, doc_length=max_doc_size, sent_length=sent_length)
+
+		sample.append(doc)
+		sample.append(doc_len)
+		sample.append(sent_length)
+		sample.append(labels)
+		epoch.append(sample)
+
+	return epoch
+
+
 
 
 
