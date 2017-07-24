@@ -30,7 +30,7 @@ from sklearn.base import BaseEstimator, TransformerMixin
 
 # external library imports
 #from utils.twokenize import *
-from model import DocClassifier, get_class_logits
+from model import DocClassifier
 from lib.path import *
 from lib.util import *
 from lib.attention_based_aggregator import *
@@ -85,10 +85,10 @@ class SentEncoderTraining(object):
 
 			print(step)
 
-			_, loss_val,summary = session.run([self.classifier.skipgram_graph.skip_optimizer,
-				self.classifier.skipgram_graph.skip_loss,self.classifier.merged_summary_skip])
+#			_, loss_val,summary = session.run([self.classifier.skipgram_graph.skip_optimizer,
+#				self.classifier.skipgram_graph.skip_loss,self.classifier.merged_summary_skip])
 
-			print("skipgram-loss :", loss_val)
+#			print("skipgram-loss :", loss_val)
 				#add  loss summary at step
 #				summary_writer.add_summary(summary, step)
 
